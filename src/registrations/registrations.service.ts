@@ -21,11 +21,17 @@ export class RegistrationsService {
   ) {}
 
   async listByEvent(eventId: string) {
-    return this.registrationsRepository.find({ where: { eventId } });
+    return this.registrationsRepository.find({
+      where: { eventId },
+      relations: { event: true, user: true }
+    });
   }
 
   async listByUser(userId: string) {
-    return this.registrationsRepository.find({ where: { userId } });
+    return this.registrationsRepository.find({
+      where: { userId },
+      relations: { event: true }
+    });
   }
 
   async register(eventId: string, userId: string) {

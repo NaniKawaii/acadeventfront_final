@@ -29,10 +29,16 @@ let RegistrationsService = class RegistrationsService {
         this.qrCodesRepository = qrCodesRepository;
     }
     async listByEvent(eventId) {
-        return this.registrationsRepository.find({ where: { eventId } });
+        return this.registrationsRepository.find({
+            where: { eventId },
+            relations: { event: true, user: true }
+        });
     }
     async listByUser(userId) {
-        return this.registrationsRepository.find({ where: { userId } });
+        return this.registrationsRepository.find({
+            where: { userId },
+            relations: { event: true }
+        });
     }
     async register(eventId, userId) {
         const event = await this.eventsRepository.findOne({ where: { id: eventId } });
