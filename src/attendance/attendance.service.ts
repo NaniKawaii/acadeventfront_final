@@ -47,6 +47,12 @@ export class AttendanceService {
     if (registration.eventId !== eventId) {
       throw new BadRequestException('QR no corresponde al evento');
     }
+    const alreadyUsed = await this.attendanceRepository.findOne({
+      where: { eventId, userId: registration.userId, present: true }
+    });
+    if (alreadyUsed) {
+      throw new BadRequestException('QR ya utilizado');
+    }
     return this.upsertAttendance(eventId, registration.userId, true, AttendanceMethod.QR);
   }
 
