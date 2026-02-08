@@ -30,6 +30,10 @@ let CertificatesController = class CertificatesController {
     verify(code) {
         return this.certificatesService.verify(code);
     }
+    async download(id, res) {
+        const filePath = await this.certificatesService.getPdfPath(id);
+        return res.sendFile(filePath);
+    }
 };
 exports.CertificatesController = CertificatesController;
 __decorate([
@@ -59,6 +63,15 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], CertificatesController.prototype, "verify", null);
+__decorate([
+    (0, swagger_1.ApiParam)({ name: 'id' }),
+    (0, common_1.Get)('certificates/:id/download'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], CertificatesController.prototype, "download", null);
 exports.CertificatesController = CertificatesController = __decorate([
     (0, swagger_1.ApiTags)('Certificates'),
     (0, common_1.Controller)(),

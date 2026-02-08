@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Res } from '@nestjs/common';
 import { ApiParam, ApiTags } from '@nestjs/swagger';
 import { CertificatesService } from './certificates.service';
 import { GenerateCertificateDto } from './dto/certificate.dto';
@@ -29,5 +29,12 @@ export class CertificatesController {
   @Get('certificates/verify/:code')
   verify(@Param('code') code: string) {
     return this.certificatesService.verify(code);
+  }
+
+  @ApiParam({ name: 'id' })
+  @Get('certificates/:id/download')
+  async download(@Param('id') id: string, @Res() res: any) {
+    const filePath = await this.certificatesService.getPdfPath(id);
+    return res.sendFile(filePath);
   }
 }

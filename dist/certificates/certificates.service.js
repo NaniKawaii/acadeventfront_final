@@ -32,7 +32,10 @@ let CertificatesService = class CertificatesService {
         this.usersRepository = usersRepository;
     }
     async listByUser(userId) {
-        return this.certificatesRepository.find({ where: { userId } });
+        return this.certificatesRepository.find({
+            where: { userId },
+            relations: ['event']
+        });
     }
     async generate(eventId, userId, dto) {
         const event = await this.eventsRepository.findOne({ where: { id: eventId } });
@@ -75,8 +78,26 @@ let CertificatesService = class CertificatesService {
         }
         return certificate;
     }
+    async getPdfPath(id) {
+        const certificate = await this.certificatesRepository.findOne({
+            where: { id },
+            relations: ['event', 'user']
+        });
+        if (!certificate) {
+            throw new common_1.NotFoundException('Certificado no encontrado');
+        }
+        const pdfUrl = await this.generatePdf(certificate.event, certificate.user, certificate.verificationCode);
+        certificate.pdfUrl = pdfUrl;
+        await this.certificatesRepository.save(certificate);
+        const relative = pdfUrl.replace(/^\/uploads\//, '');
+        const filePath = path.join(__dirname, '../../uploads', relative);
+        if (!fs.existsSync(filePath)) {
+            throw new common_1.NotFoundException('PDF no disponible');
+        }
+        return filePath;
+    }
     async generatePdf(event, user, verificationCode) {
-        const doc = new PDFDocument();
+        const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 48 });
         const fileName = `certificate-${verificationCode}.pdf`;
         const filePath = path.join(__dirname, '../../uploads/certificates', fileName);
         const dir = path.dirname(filePath);
@@ -85,22 +106,107 @@ let CertificatesService = class CertificatesService {
         }
         const stream = fs.createWriteStream(filePath);
         doc.pipe(stream);
-        doc.fontSize(24).text('CERTIFICADO DE ASISTENCIA', { align: 'center' });
-        doc.moveDown();
-        doc.fontSize(18).text('Acadevent - Universidad', { align: 'center' });
-        doc.moveDown(2);
-        doc.fontSize(14).text(`Se certifica que ${user.fullName}`, { align: 'center' });
-        doc.moveDown();
-        doc.text(`ha asistido al evento "${event.title}"`, { align: 'center' });
-        doc.moveDown();
-        doc.text(`realizado el ${event.startAt.toLocaleDateString('es-ES')}`, { align: 'center' });
-        doc.moveDown(2);
-        doc.fontSize(12).text(`Código de verificación: ${verificationCode}`, { align: 'center' });
-        doc.moveDown();
-        doc.text(`Fecha de emisión: ${new Date().toLocaleDateString('es-ES')}`, { align: 'center' });
+        const { width, height } = doc.page;
+        const ribbonWidth = 190;
+        const contentWidth = width - ribbonWidth;
+        const contentLeft = 60;
+        const contentRight = contentWidth - 60;
+        const headerY = 90;
+        const mainCenter = contentWidth / 2;
+        const dateText = event.startAt.toLocaleDateString('es-ES');
+        const timeText = `${event.startAt.toLocaleTimeString('es-ES', {
+            hour: '2-digit',
+            minute: '2-digit'
+        })} - ${event.endAt.toLocaleTimeString('es-ES', {
+            hour: '2-digit',
+            minute: '2-digit'
+        })}`;
+        doc.rect(0, 0, width, height).fill('#fbfaf7');
+        doc.rect(width - ribbonWidth, 0, ribbonWidth, height).fill('#edeaf6');
+        doc.rect(22, 22, width - 44, height - 44).lineWidth(2).stroke('#6f63ff');
+        doc.rect(32, 32, width - 64, height - 64).lineWidth(1).stroke('#d4cff7');
+        doc.save();
+        doc.opacity(0.08);
+        doc.strokeColor('#b3a9ea').lineWidth(1.2);
+        doc.circle(170, 270, 140).stroke();
+        doc.circle(300, 420, 120).stroke();
+        doc.circle(120, 470, 90).stroke();
+        doc.restore();
+        doc.fillColor('#2d2a8c');
+        doc.fontSize(42).text('AcadEvent', contentLeft, headerY, {
+            width: contentRight - contentLeft,
+            align: 'left'
+        });
+        doc.fillColor('#3a3a5c');
+        doc.fontSize(16).text('Certificado de asistencia', contentLeft, headerY + 48, {
+            width: contentRight - contentLeft,
+            align: 'left'
+        });
+        doc.fillColor('#1f1f2e');
+        doc.fontSize(16).text('Se certifica que', 0, 210, { align: 'center', width: contentWidth });
+        doc.fontSize(28).fillColor('#2d2a8c').text(user.fullName, 0, 238, {
+            align: 'center',
+            width: contentWidth
+        });
+        doc.fillColor('#1f1f2e');
+        doc.fontSize(15).text('ha asistido al evento', 0, 285, {
+            align: 'center',
+            width: contentWidth
+        });
+        doc.fontSize(20).fillColor('#1f1f2e').text(`"${event.title}"`, 90, 312, {
+            align: 'center',
+            width: contentWidth - 180
+        });
+        doc.fontSize(13).fillColor('#3a3a5c').text(`Realizado el ${dateText} · ${timeText}`, 0, 350, { align: 'center', width: contentWidth });
+        doc.fillColor('#1f1f2e');
+        doc.lineWidth(1).moveTo(contentLeft, height - 170).lineTo(contentLeft + 240, height - 170).stroke('#5b4fe9');
+        doc.fontSize(12).fillColor('#3a3a5c').text('Autoridad académica', contentLeft, height - 155);
+        doc.fillColor('#3a3a5c');
+        doc.fontSize(11).text(`Código de verificación: ${verificationCode}`, 0, height - 140, {
+            align: 'center',
+            width: contentWidth
+        });
+        doc.fontSize(11).text(`Fecha de emisión: ${new Date().toLocaleDateString('es-ES')}`, 0, height - 120, {
+            align: 'center',
+            width: contentWidth
+        });
+        const ribbonX = width - ribbonWidth;
+        const ribbonCenter = ribbonX + ribbonWidth / 2;
+        doc.fillColor('#4b4b5e');
+        doc.fontSize(11).text('CERTIFICADO', ribbonX, 90, {
+            width: ribbonWidth,
+            align: 'center'
+        });
+        doc.fontSize(11).text('DE ASISTENCIA', ribbonX, 106, {
+            width: ribbonWidth,
+            align: 'center'
+        });
+        doc.lineWidth(1).strokeColor('#b3aecf');
+        doc.moveTo(ribbonX + 26, 130).lineTo(ribbonX + ribbonWidth - 26, 130).stroke();
+        doc.lineWidth(2).strokeColor('#6b6b80');
+        doc.circle(ribbonCenter, height / 2, 58).stroke();
+        doc.circle(ribbonCenter, height / 2, 48).stroke();
+        doc.fillColor('#6b6b80');
+        doc.fontSize(10).text('ACAD', ribbonX, height / 2 - 14, {
+            width: ribbonWidth,
+            align: 'center'
+        });
+        doc.fontSize(10).text('EVENT', ribbonX, height / 2 + 2, {
+            width: ribbonWidth,
+            align: 'center'
+        });
+        doc.fillColor('#4b4b5e');
+        doc.fontSize(10).text('Verifica en', ribbonX, height - 140, {
+            width: ribbonWidth,
+            align: 'center'
+        });
+        doc.fontSize(9).text('/verify?code=' + verificationCode, ribbonX, height - 124, {
+            width: ribbonWidth,
+            align: 'center'
+        });
         doc.end();
         return new Promise((resolve, reject) => {
-            stream.on('finish', () => resolve(`/certificates/${fileName}`));
+            stream.on('finish', () => resolve(`/uploads/certificates/${fileName}`));
             stream.on('error', reject);
         });
     }

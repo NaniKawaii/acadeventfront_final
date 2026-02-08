@@ -13,5 +13,6 @@ export declare class CertificatesService {
     listByUser(userId: string): Promise<Certificate[]>;
     generate(eventId: string, userId: string, dto: GenerateCertificateDto): Promise<Certificate>;
     verify(code: string): Promise<Certificate>;
+    getPdfPath(id: string): Promise<string>;
     private generatePdf;
 }
