@@ -7,7 +7,7 @@ import { Event } from '../events/event.entity';
 import { User } from '../users/user.entity';
 import { GenerateCertificateDto } from './dto/certificate.dto';
 import { randomUUID } from 'crypto';
-import * as PDFDocument from 'pdfkit';
+import PDFDocument = require('pdfkit');
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
