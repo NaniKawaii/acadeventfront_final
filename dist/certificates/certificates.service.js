@@ -24,6 +24,7 @@ const crypto_1 = require("crypto");
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 let CertificatesService = class CertificatesService {
     constructor(certificatesRepository, attendanceRepository, eventsRepository, usersRepository) {
         this.certificatesRepository = certificatesRepository;
@@ -59,14 +60,15 @@ let CertificatesService = class CertificatesService {
             throw new common_1.BadRequestException('No cumple asistencia para certificado');
         }
         const verificationCode = (0, crypto_1.randomUUID)();
-        const pdfUrl = await this.generatePdf(event, user, verificationCode);
         const certificate = this.certificatesRepository.create({
             eventId,
             userId,
             verificationCode,
-            pdfUrl
+            pdfUrl: null
         });
-        return this.certificatesRepository.save(certificate);
+        const saved = await this.certificatesRepository.save(certificate);
+        saved.pdfUrl = `/certificates/${saved.id}/download`;
+        return this.certificatesRepository.save(saved);
     }
     async verify(code) {
         const certificate = await this.certificatesRepository.findOne({
@@ -86,20 +88,20 @@ let CertificatesService = class CertificatesService {
         if (!certificate) {
             throw new common_1.NotFoundException('Certificado no encontrado');
         }
-        const pdfUrl = await this.generatePdf(certificate.event, certificate.user, certificate.verificationCode);
-        certificate.pdfUrl = pdfUrl;
-        await this.certificatesRepository.save(certificate);
-        const relative = pdfUrl.replace(/^\/uploads\//, '');
-        const filePath = path.join(__dirname, '../../uploads', relative);
+        const filePath = await this.generatePdfFile(certificate.event, certificate.user, certificate.verificationCode);
+        if (!certificate.pdfUrl) {
+            certificate.pdfUrl = `/certificates/${certificate.id}/download`;
+            await this.certificatesRepository.save(certificate);
+        }
         if (!fs.existsSync(filePath)) {
             throw new common_1.NotFoundException('PDF no disponible');
         }
         return filePath;
     }
-    async generatePdf(event, user, verificationCode) {
+    async generatePdfFile(event, user, verificationCode) {
         const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 48 });
         const fileName = `certificate-${verificationCode}.pdf`;
-        const filePath = path.join(__dirname, '../../uploads/certificates', fileName);
+        const filePath = path.join(os.tmpdir(), 'acadevent', 'certificates', fileName);
         const dir = path.dirname(filePath);
         if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
@@ -206,7 +208,7 @@ let CertificatesService = class CertificatesService {
         });
         doc.end();
         return new Promise((resolve, reject) => {
-            stream.on('finish', () => resolve(`/uploads/certificates/${fileName}`));
+            stream.on('finish', () => resolve(filePath));
             stream.on('error', reject);
         });
     }

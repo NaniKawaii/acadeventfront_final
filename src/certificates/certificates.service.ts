@@ -10,6 +10,7 @@ import { randomUUID } from 'crypto';
 import * as PDFDocument from 'pdfkit';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 
 @Injectable()
 export class CertificatesService {
@@ -55,15 +56,15 @@ export class CertificatesService {
     }
 
     const verificationCode = randomUUID();
-    const pdfUrl = await this.generatePdf(event, user, verificationCode);
-
     const certificate = this.certificatesRepository.create({
       eventId,
       userId,
       verificationCode,
-      pdfUrl
+      pdfUrl: null
     });
-    return this.certificatesRepository.save(certificate);
+    const saved = await this.certificatesRepository.save(certificate);
+    saved.pdfUrl = `/certificates/${saved.id}/download`;
+    return this.certificatesRepository.save(saved);
   }
 
   async verify(code: string) {
@@ -85,27 +86,26 @@ export class CertificatesService {
     if (!certificate) {
       throw new NotFoundException('Certificado no encontrado');
     }
-    const pdfUrl = await this.generatePdf(
+    const filePath = await this.generatePdfFile(
       certificate.event,
       certificate.user,
       certificate.verificationCode
     );
-    certificate.pdfUrl = pdfUrl;
-    await this.certificatesRepository.save(certificate);
-    const relative = pdfUrl.replace(/^\/uploads\//, '');
-    const filePath = path.join(__dirname, '../../uploads', relative);
+    if (!certificate.pdfUrl) {
+      certificate.pdfUrl = `/certificates/${certificate.id}/download`;
+      await this.certificatesRepository.save(certificate);
+    }
     if (!fs.existsSync(filePath)) {
       throw new NotFoundException('PDF no disponible');
     }
     return filePath;
   }
 
-  private async generatePdf(event: Event, user: User, verificationCode: string): Promise<string> {
+  private async generatePdfFile(event: Event, user: User, verificationCode: string): Promise<string> {
     const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 48 });
     const fileName = `certificate-${verificationCode}.pdf`;
-    const filePath = path.join(__dirname, '../../uploads/certificates', fileName);
+    const filePath = path.join(os.tmpdir(), 'acadevent', 'certificates', fileName);
 
-    // Ensure directory exists
     const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
@@ -230,7 +230,7 @@ export class CertificatesService {
     doc.end();
 
     return new Promise((resolve, reject) => {
-      stream.on('finish', () => resolve(`/uploads/certificates/${fileName}`));
+      stream.on('finish', () => resolve(filePath));
       stream.on('error', reject);
     });
   }
